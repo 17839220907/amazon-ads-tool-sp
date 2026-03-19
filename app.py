@@ -11,7 +11,7 @@ st.markdown("""
 **使用说明：**
 1. 准备好你的 Excel 配置文件（格式需与 **广告自动生成工具.xlsx** 一致）。
 2. 点击下方按钮上传文件。
-3. 系统将自动处理并提供 CSV 下载。
+3. 系统将自动处理并提供 Excel (.xlsx) 下载。
 """)
 
 
@@ -269,7 +269,7 @@ if uploaded_file:
 
                 logs.append(f"🎉 生成: {camp_name} ({len(valid_keywords)} 词)")
 
-            # 6. 输出结果
+            # ================= 6. 核心修改：输出为 Excel (.xlsx) =================
             if output_rows:
                 st.success(f"✅ 成功生成 {len(output_rows)} 行数据！")
 
@@ -282,31 +282,41 @@ if uploaded_file:
                 df_out = pd.DataFrame(output_rows)
                 for c in cols:
                     if c not in df_out.columns: df_out[c] = None
-
-                # 转换CSV格式 (UTF-8-SIG)
-                csv_upload = df_out[cols].to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+                
+                # 只保留需要的列
+                df_out = df_out[cols]
 
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+                # 转换上传表为 Excel 格式到内存，并命名 Sheet 为 "商品推广活动"
+                excel_upload_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_upload_buffer, engine='openpyxl') as writer:
+                    df_out.to_excel(writer, index=False, sheet_name='商品推广活动')
+                excel_upload_data = excel_upload_buffer.getvalue()
 
                 # 下载区
                 col1, col2 = st.columns(2)
                 with col1:
                     st.download_button(
-                        label="📥 下载【上传表】(中文版)",
-                        data=csv_upload,
-                        file_name=f"【中文版】SP广告上传表_{timestamp}.csv",
-                        mime='text/csv'
+                        label="📥 下载【上传表】(.xlsx)",
+                        data=excel_upload_data,
+                        file_name=f"【中文版】SP广告上传表_{timestamp}.xlsx",
+                        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                     )
 
                 with col2:
                     if report_rows:
-                        csv_report = pd.DataFrame(report_rows).to_csv(index=False, encoding='utf-8-sig').encode(
-                            'utf-8-sig')
+                        # 转换说明书为 Excel 格式到内存
+                        excel_report_buffer = io.BytesIO()
+                        with pd.ExcelWriter(excel_report_buffer, engine='openpyxl') as writer:
+                            pd.DataFrame(report_rows).to_excel(writer, index=False, sheet_name='生成说明书')
+                        excel_report_data = excel_report_buffer.getvalue()
+
                         st.download_button(
-                            label="📄 下载【说明书】",
-                            data=csv_report,
-                            file_name=f"【说明书】广告生成详情_{timestamp}.csv",
-                            mime='text/csv'
+                            label="📄 下载【说明书】(.xlsx)",
+                            data=excel_report_data,
+                            file_name=f"【说明书】广告生成详情_{timestamp}.xlsx",
+                            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                         )
             else:
                 st.warning("⚠️ 未生成任何数据。")
@@ -319,5 +329,4 @@ if uploaded_file:
         except Exception as e:
             st.error(f"❌ 程序发生错误: {e}")
             import traceback
-
             st.text(traceback.format_exc())
