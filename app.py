@@ -120,6 +120,41 @@ def build_mappings(df_style, df_model):
     return style_abbr_map, style_root_map, model_abbr_map, model_name_to_abbr, model_file_id_map
 
 
+def load_brand_settings(xls, logs):
+    sheet = find_sheet_strict(xls, "品牌设置")
+    if not sheet:
+        return {}, None
+
+    df_brand = clean_df(pd.read_excel(xls, sheet_name=sheet))
+    if df_brand is None or df_brand.empty:
+        return {}, None
+
+    site_col = "站点" if "站点" in df_brand.columns else None
+    brand_col = None
+    for candidate in ["品牌实体编号", "Brand Entity ID", "brandEntityId", "Brand Entity Id"]:
+        if candidate in df_brand.columns:
+            brand_col = candidate
+            break
+
+    if not brand_col:
+        logs.append("⚠️ [品牌设置] 缺少 '品牌实体编号' 列，视频广告会被跳过。")
+        return {}, None
+
+    brand_by_site = {}
+    default_brand_id = None
+    for _, row in df_brand.iterrows():
+        brand_id = normalize_as_text(row.get(brand_col))
+        if not brand_id:
+            continue
+        site = normalize_as_text(row.get(site_col)) if site_col else None
+        if site:
+            brand_by_site[site] = brand_id
+        if not default_brand_id:
+            default_brand_id = brand_id
+
+    return brand_by_site, default_brand_id
+
+
 def parse_sku_info(sku, style_abbr_map, model_abbr_map):
     found_model = None
     found_style = None
@@ -342,7 +377,7 @@ def dedupe_campaign_name(base_name, used_names, asin):
     return candidate
 
 
-def generate_video_rows(xls, df_demand, maps, logs):
+def generate_video_rows(xls, df_demand, maps, brand_by_site, default_brand_id, logs):
     style_abbr_map, style_root_map, model_abbr_map, model_name_to_abbr, model_file_id_map = maps
     output_rows = []
     report_rows = []
@@ -365,6 +400,12 @@ def generate_video_rows(xls, df_demand, maps, logs):
             continue
         if not sku or not asin or not video_media_id:
             logs.append(f"⚠️ [视频] 跳过缺少 SKU/ASIN/视频媒体编号 的行: SKU={sku}, ASIN={asin}")
+            continue
+
+        site = normalize_as_text(row.get("站点"))
+        brand_entity_id = brand_by_site.get(site) or default_brand_id
+        if not brand_entity_id:
+            logs.append(f"⚠️ [视频] 跳过缺少品牌实体编号的行: 站点={site}, SKU={sku}, ASIN={asin}")
             continue
 
         found_model, found_style = parse_sku_info(sku, style_abbr_map, model_abbr_map)
@@ -395,6 +436,7 @@ def generate_video_rows(xls, df_demand, maps, logs):
             "预算": get_col(row, ["每日预算"]),
             "竞价优化": "自动",
             "广告格式": "视频",
+            "品牌实体编号": brand_entity_id,
             "创意素材 ASIN": asin,
             "视频媒体编号": video_media_id,
             "创意素材类型": "视频",
@@ -550,6 +592,7 @@ if uploaded_file:
             maps = build_mappings(df_style, df_model)
 
             logs = []
+            brand_by_site, default_brand_id = load_brand_settings(xls, logs)
             report_rows = []
             sp_rows = []
             video_rows = []
@@ -563,7 +606,9 @@ if uploaded_file:
 
             if s_video:
                 df_video = clean_df(pd.read_excel(xls, sheet_name=s_video))
-                video_rows, video_report = generate_video_rows(xls, df_video, maps, logs)
+                video_rows, video_report = generate_video_rows(
+                    xls, df_video, maps, brand_by_site, default_brand_id, logs
+                )
                 report_rows.extend(video_report)
             else:
                 logs.append("ℹ️ 未找到 [广告需求-视频]，跳过视频广告。")
