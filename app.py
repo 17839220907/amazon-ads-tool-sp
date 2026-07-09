@@ -5,6 +5,9 @@ import pandas as pd
 import streamlit as st
 
 
+KEYWORDS_PER_AD_GROUP_LIMIT = 950
+
+
 # ================= 1. 网页基础设置 =================
 st.set_page_config(page_title="亚马逊广告自动生成工具", page_icon="🚀", layout="wide")
 
@@ -86,6 +89,16 @@ def ordered_unique(values):
             seen.add(text)
             result.append(text)
     return result
+
+
+def chunk_list(values, size):
+    return [values[i:i + size] for i in range(0, len(values), size)]
+
+
+def make_ad_group_name(base_name, group_index):
+    if group_index == 1:
+        return base_name
+    return f"{base_name}-{group_index}"
 
 
 def build_mappings(df_style, df_model):
@@ -299,49 +312,52 @@ def generate_sp_rows(xls, df_demand, maps, logs):
                 }
             )
 
-        output_rows.append(
-            {
-                "产品": "商品推广",
-                "实体层级": "广告组",
-                "操作": "创建",
-                "广告活动编号": camp_name,
-                "广告组编号": camp_name,
-                "广告组名称": camp_name,
-                "状态": "已启用",
-                "广告组默认竞价": 1,
-            }
-        )
+        skus_list = [item["sku"] for _, item in group.iterrows()]
+        keyword_groups = chunk_list(valid_keywords, KEYWORDS_PER_AD_GROUP_LIMIT)
 
-        skus_list = []
-        for _, item in group.iterrows():
-            skus_list.append(item["sku"])
+        for group_index, keywords in enumerate(keyword_groups, start=1):
+            ad_group_name = make_ad_group_name(camp_name, group_index)
             output_rows.append(
                 {
                     "产品": "商品推广",
-                    "实体层级": "商品广告",
+                    "实体层级": "广告组",
                     "操作": "创建",
                     "广告活动编号": camp_name,
-                    "广告组编号": camp_name,
-                    "SKU": item["sku"],
+                    "广告组编号": ad_group_name,
+                    "广告组名称": ad_group_name,
                     "状态": "已启用",
+                    "广告组默认竞价": 1,
                 }
             )
 
-        for kw in valid_keywords:
-            output_rows.append(
-                {
-                    "产品": "商品推广",
-                    "实体层级": "关键词",
-                    "操作": "创建",
-                    "广告活动编号": camp_name,
-                    "广告组编号": camp_name,
-                    "关键词文本": kw,
-                    "匹配类型": first["match"],
-                    "竞价": group["bid"].max(),
-                    "状态": "已启用",
-                    "广告组默认竞价（仅供参考）": 1,
-                }
-            )
+            for _, item in group.iterrows():
+                output_rows.append(
+                    {
+                        "产品": "商品推广",
+                        "实体层级": "商品广告",
+                        "操作": "创建",
+                        "广告活动编号": camp_name,
+                        "广告组编号": ad_group_name,
+                        "SKU": item["sku"],
+                        "状态": "已启用",
+                    }
+                )
+
+            for kw in keywords:
+                output_rows.append(
+                    {
+                        "产品": "商品推广",
+                        "实体层级": "关键词",
+                        "操作": "创建",
+                        "广告活动编号": camp_name,
+                        "广告组编号": ad_group_name,
+                        "关键词文本": kw,
+                        "匹配类型": first["match"],
+                        "竞价": group["bid"].max(),
+                        "状态": "已启用",
+                        "广告组默认竞价（仅供参考）": 1,
+                    }
+                )
 
         report_rows.append(
             {
@@ -353,10 +369,12 @@ def generate_sp_rows(xls, df_demand, maps, logs):
                 "匹配状态": "✅ 成功",
                 "核心词根": str(roots),
                 "关键词数": len(valid_keywords),
+                "广告组数": len(keyword_groups),
+                "每组关键词上限": KEYWORDS_PER_AD_GROUP_LIMIT,
                 "SKU列表": " | ".join(skus_list),
             }
         )
-        logs.append(f"🎉 [SP] 生成: {camp_name} ({len(valid_keywords)} 词)")
+        logs.append(f"🎉 [SP] 生成: {camp_name} ({len(valid_keywords)} 词 / {len(keyword_groups)} 个广告组)")
 
     return output_rows, report_rows
 
@@ -443,20 +461,23 @@ def generate_video_rows(xls, df_demand, maps, brand_by_site, default_brand_id, l
         }
         output_rows.append(campaign_row)
 
-        for kw in valid_keywords:
-            output_rows.append(
-                {
-                    "产品": "品牌推广",
-                    "实体层级": "关键词",
-                    "操作": "创建",
-                    "广告活动编号": camp_name,
-                    "广告组编号": camp_name,
-                    "状态": "已启用",
-                    "竞价": get_col(row, ["竞价"]),
-                    "关键词文本": kw,
-                    "匹配类型": match_type,
-                }
-            )
+        keyword_groups = chunk_list(valid_keywords, KEYWORDS_PER_AD_GROUP_LIMIT)
+        for group_index, keywords in enumerate(keyword_groups, start=1):
+            ad_group_name = make_ad_group_name(camp_name, group_index)
+            for kw in keywords:
+                output_rows.append(
+                    {
+                        "产品": "品牌推广",
+                        "实体层级": "关键词",
+                        "操作": "创建",
+                        "广告活动编号": camp_name,
+                        "广告组编号": ad_group_name,
+                        "状态": "已启用",
+                        "竞价": get_col(row, ["竞价"]),
+                        "关键词文本": kw,
+                        "匹配类型": match_type,
+                    }
+                )
 
         report_rows.append(
             {
@@ -468,12 +489,14 @@ def generate_video_rows(xls, df_demand, maps, brand_by_site, default_brand_id, l
                 "匹配状态": "✅ 成功",
                 "核心词根": str(roots),
                 "关键词数": len(valid_keywords),
+                "广告组数": len(keyword_groups),
+                "每组关键词上限": KEYWORDS_PER_AD_GROUP_LIMIT,
                 "SKU列表": sku,
                 "ASIN": asin,
                 "视频媒体编号": video_media_id,
             }
         )
-        logs.append(f"🎬 [视频] 生成: {camp_name} ({len(valid_keywords)} 词)")
+        logs.append(f"🎬 [视频] 生成: {camp_name} ({len(valid_keywords)} 词 / {len(keyword_groups)} 个广告组)")
 
     return output_rows, report_rows
 
