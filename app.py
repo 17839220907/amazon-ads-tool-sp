@@ -445,7 +445,7 @@ def generate_video_rows(xls, df_demand, maps, brand_by_site, default_brand_id, l
         camp_name = dedupe_campaign_name(base_name, used_names, asin)
         match_type = get_str(row, ["匹配模式"], "精准")
         placement_adjustments = [
-            ("首页", get_col(row, ["首页位置溢价%", "首页溢价%"])),
+            ("搜索结果首页首位", get_col(row, ["首页位置溢价%", "首页溢价%"])),
             ("商品详情页", get_col(row, ["商品页溢价%", "商品页位置溢价%"])),
             ("其他", get_col(row, ["其余位置溢价%", "其余溢价%"])),
         ]
