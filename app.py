@@ -53,6 +53,9 @@ def get_col(row, col_list, default=0.0):
     for col in col_list:
         if col in row and pd.notna(row[col]):
             try:
+                if isinstance(row[col], str):
+                    value = row[col].strip().replace("%", "").replace("％", "")
+                    return float(value)
                 return float(row[col])
             except (TypeError, ValueError):
                 return default
@@ -441,6 +444,11 @@ def generate_video_rows(xls, df_demand, maps, brand_by_site, default_brand_id, l
         base_name = f"{abbr}-{found_style}-视频"
         camp_name = dedupe_campaign_name(base_name, used_names, asin)
         match_type = get_str(row, ["匹配模式"], "精准")
+        placement_adjustments = [
+            ("首页", get_col(row, ["首页位置溢价%", "首页溢价%"])),
+            ("商品详情页", get_col(row, ["商品页溢价%", "商品页位置溢价%"])),
+            ("其他", get_col(row, ["其余位置溢价%", "其余溢价%"])),
+        ]
 
         keyword_groups = chunk_list(valid_keywords, KEYWORDS_PER_AD_GROUP_LIMIT)
         output_rows.append(
@@ -458,9 +466,22 @@ def generate_video_rows(xls, df_demand, maps, brand_by_site, default_brand_id, l
                 "竞价优化": False,
             }
         )
+        for placement, percentage in placement_adjustments:
+            output_rows.append(
+                {
+                    "产品": "品牌推广",
+                    "实体层级": "按广告位调整竞价",
+                    "操作": "创建",
+                    "广告活动编号": camp_name,
+                    "广告位": placement,
+                    "百分比": percentage,
+                }
+            )
 
+        ad_group_keyword_parts = []
         for group_index, keywords in enumerate(keyword_groups, start=1):
             ad_group_name = make_ad_group_name(camp_name, group_index)
+            ad_group_keyword_parts.append(f"{ad_group_name}:{len(keywords)}")
             output_rows.append(
                 {
                     "产品": "品牌推广",
@@ -514,6 +535,8 @@ def generate_video_rows(xls, df_demand, maps, brand_by_site, default_brand_id, l
                 "关键词数": len(valid_keywords),
                 "广告组数": len(keyword_groups),
                 "每组关键词上限": KEYWORDS_PER_AD_GROUP_LIMIT,
+                "广告组关键词分配": " | ".join(ad_group_keyword_parts),
+                "广告位调整": " | ".join(f"{placement}:{percentage}" for placement, percentage in placement_adjustments),
                 "SKU列表": sku,
                 "ASIN": asin,
                 "视频媒体编号": video_media_id,
