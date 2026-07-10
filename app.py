@@ -442,28 +442,51 @@ def generate_video_rows(xls, df_demand, maps, brand_by_site, default_brand_id, l
         camp_name = dedupe_campaign_name(base_name, used_names, asin)
         match_type = get_str(row, ["匹配模式"], "精准")
 
-        campaign_row = {
-            "产品": "品牌推广",
-            "实体层级": "广告活动",
-            "操作": "创建",
-            "广告活动编号": camp_name,
-            "广告活动名称": camp_name,
-            "开始日期": get_str(row, ["开始日期"]),
-            "状态": "已启用",
-            "预算类型": "每日",
-            "预算": get_col(row, ["每日预算"]),
-            "竞价优化": "自动",
-            "广告格式": "视频",
-            "品牌实体编号": brand_entity_id,
-            "创意素材 ASIN": asin,
-            "视频媒体编号": video_media_id,
-            "创意素材类型": "视频",
-        }
-        output_rows.append(campaign_row)
-
         keyword_groups = chunk_list(valid_keywords, KEYWORDS_PER_AD_GROUP_LIMIT)
+        output_rows.append(
+            {
+                "产品": "品牌推广",
+                "实体层级": "广告活动",
+                "操作": "创建",
+                "广告活动编号": camp_name,
+                "广告活动名称": camp_name,
+                "开始日期": get_str(row, ["开始日期"]),
+                "状态": "已启用",
+                "品牌实体编号": brand_entity_id,
+                "预算类型": "每日",
+                "预算": get_col(row, ["每日预算"]),
+                "竞价优化": False,
+            }
+        )
+
         for group_index, keywords in enumerate(keyword_groups, start=1):
             ad_group_name = make_ad_group_name(camp_name, group_index)
+            output_rows.append(
+                {
+                    "产品": "品牌推广",
+                    "实体层级": "广告组",
+                    "操作": "创建",
+                    "广告活动编号": camp_name,
+                    "广告组编号": ad_group_name,
+                    "广告组名称": ad_group_name,
+                    "状态": "已启用",
+                }
+            )
+            output_rows.append(
+                {
+                    "产品": "品牌推广",
+                    "实体层级": "视频广告",
+                    "操作": "创建",
+                    "广告活动编号": camp_name,
+                    "广告组编号": ad_group_name,
+                    "广告名称": ad_group_name,
+                    "状态": "已启用",
+                    "落地页类型": "商品详情页",
+                    "同意翻译": False,
+                    "创意素材 ASIN": asin,
+                    "视频素材编号": video_media_id,
+                }
+            )
             for kw in keywords:
                 output_rows.append(
                     {
@@ -531,42 +554,66 @@ VIDEO_COLS = [
     "实体层级",
     "操作",
     "广告活动编号",
-    "广告活动草稿编号",
     "广告组合编号",
     "广告组编号",
+    "广告编号",
     "关键词编号",
     "商品投放 ID",
     "广告活动名称",
+    "广告组名称",
+    "广告名称",
     "广告活动名称（仅供参考）",
+    "广告组名称（仅供参考）",
     "广告组合名称（仅供参考）",
     "开始日期",
     "结束日期",
     "状态",
+    "品牌实体编号",
     "广告活动状态（仅供参考）",
     "广告活动开展状态（仅供参考）",
+    "广告活动投放状态详情（仅供参考）",
+    "基于规则的预算正在处理（仅供参考）",
+    "基于规则的预算名称（仅供参考）",
+    "基于规则的预算值（仅供参考）",
+    "基于规则的预算编号（仅供参考）",
+    "广告组投放状态（仅供参考）",
+    "广告组投放状态详情（仅供参考）",
     "预算类型",
     "预算",
     "竞价优化",
-    "自定义竞价调整百分比",
+    "商品位置",
     "竞价",
+    "广告位",
+    "百分比",
+    "受众编号",
+    "购物者群体占比",
+    "购物者群体类型",
+    "站点名称（仅供参考）",
     "关键词文本",
     "匹配类型",
+    "母语关键词",
+    "母语区域",
     "拓展商品投放编号",
     "拓展商品投放名称（仅供参考）",
-    "广告格式",
-    "广告格式（仅供参考）",
+    "广告投放状态（仅供参考）",
+    "广告投放状态详情（仅供参考）",
     "落地页 URL",
     "落地页 ASIN",
-    "落地页类型（仅供参考）",
-    "品牌实体编号",
+    "落地页类型",
     "品牌名称",
+    "同意翻译",
     "品牌徽标素材编号",
     "品牌徽标 URL（仅供参考）",
-    "自定义图片素材编号",
+    "品牌徽标裁剪",
+    "自定义图片",
     "创意素材标题",
     "创意素材 ASIN",
-    "视频媒体编号",
-    "创意素材类型",
+    "视频素材编号",
+    "原始视频素材编号（仅供参考）",
+    "子页面",
+    "商品排除项",
+    "广告标题",
+    "站点",
     "展示量",
     "点击量",
     "点击率",
@@ -649,7 +696,9 @@ if uploaded_file:
                 if sp_rows:
                     align_columns(sp_rows, SP_COLS).to_excel(writer, index=False, sheet_name="商品推广活动")
                 if video_rows:
-                    align_columns(video_rows, VIDEO_COLS).to_excel(writer, index=False, sheet_name="品牌推广活动")
+                    align_columns(video_rows, VIDEO_COLS).to_excel(
+                        writer, index=False, sheet_name="品牌推广多个广告组广告活动 1"
+                    )
             excel_upload_data = excel_upload_buffer.getvalue()
 
             st.success(f"✅ 成功生成 SP {len(sp_rows)} 行，视频 {len(video_rows)} 行！")
